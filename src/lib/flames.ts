@@ -21,6 +21,9 @@ const COLOR_CHANNELS = 3;
 // 3. (optional) filtering, motion blur, etc
 // 4. use hardcoded vertices to draw pixels to screen
 
+// other TODOs:
+// - increase parallelism with even more buffers (if needed)
+
 export interface Params {
   gpu: GPU;
   canvas: HTMLCanvasElement;
@@ -29,10 +32,11 @@ export interface Params {
   device: GPUDevice;
   presentationHeight: number;
   presentationWidth: number;
+  superSamplingScale: number;
 }
 
 export function init(params: Params) {
-  const { gpu, context, device, presentationWidth, presentationHeight } = params;
+  const { gpu, context, device, presentationWidth, presentationHeight, superSamplingScale } = params;
 
   const presentationFormat = gpu.getPreferredCanvasFormat();
   context.configure({
@@ -42,21 +46,35 @@ export function init(params: Params) {
   });
 
   // initialize buffers
-  const colorBufferSize = Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight) * COLOR_CHANNELS;
+  const hitsBufferSize = Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight * superSamplingScale * superSamplingScale);
+  const hitsBuffer = device.createBuffer({
+    size: hitsBufferSize,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+  });
+
+  const colorBufferSize = Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight * superSamplingScale * superSamplingScale) * COLOR_CHANNELS;
   const colorBuffer = device.createBuffer({
     size: colorBufferSize,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
   });
 
-  // screen width, screen height, random seed
+  // screen width, screen height, supersampling scale, random seed
   const uniformBufferSize = 4 * 4;
   const uniformBuffer = device.createBuffer({
     size: uniformBufferSize,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
+  // for readin data from the gpu
+  const stagingBuffer = device.createBuffer({
+    size: hitsBufferSize,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+
+  // set up bind groups for each pipeline
   const flamesBindGroupLayout = device.createBindGroupLayout({
     entries: [
+      // hits buffer
       {
         binding: 0,
         visibility: GPUShaderStage.COMPUTE, 
@@ -64,8 +82,17 @@ export function init(params: Params) {
           type: "storage"
         }
       },
+      // color buffer
       {
         binding: 1,
+        visibility: GPUShaderStage.COMPUTE, 
+        buffer: {
+          type: "storage"
+        }
+      },
+      // params (uniform)
+      {
+        binding: 2,
         visibility: GPUShaderStage.COMPUTE,
         buffer: {
           type: "uniform",
@@ -80,11 +107,17 @@ export function init(params: Params) {
       {
         binding: 0,
         resource: {
+          buffer: hitsBuffer
+        }
+      },
+      {
+        binding: 1,
+        resource: {
           buffer: colorBuffer
         }
       },
       {
-        binding: 1, 
+        binding: 2, 
         resource: {
           buffer: uniformBuffer
         }
@@ -122,7 +155,14 @@ export function init(params: Params) {
         }
       }, 
       {
-        binding: 1, // the color buffer
+        binding: 1, // the hits buffer
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: {
+          type: "read-only-storage"
+        }
+      },
+      {
+        binding: 2, // the color buffer
         visibility: GPUShaderStage.FRAGMENT,
         buffer: {
           type: "read-only-storage"
@@ -169,19 +209,25 @@ export function init(params: Params) {
       {
         binding: 1, 
         resource: {
+          buffer: hitsBuffer
+        }
+      },
+      {
+        binding: 2, 
+        resource: {
           buffer: colorBuffer
         }
       }
     ],
   });
 
-  function frame() {
+  async function frame() {
     const commandEncoder = device.createCommandEncoder();
 
     // flames pass
     {
-      device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([presentationWidth, presentationHeight, Math.ceil(Math.random() * 1e12)]))
-      const timesToRun = Math.ceil(presentationWidth * presentationHeight / 256)
+      device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([presentationWidth, presentationHeight, superSamplingScale, Math.ceil(Math.random() * 1e12)]))
+      const timesToRun = Math.ceil(presentationWidth * presentationHeight * superSamplingScale * superSamplingScale / 256)
       const passEncoder = commandEncoder.beginComputePass();
       // clear previous pixels
       passEncoder.setPipeline(clearPipeline);
@@ -213,8 +259,18 @@ export function init(params: Params) {
       passEncoder.draw(6, 1, 0, 0);
       passEncoder.end();
     }
+    // map gpu memory to javascript (for debugging)
+    {
+      // commandEncoder.copyBufferToBuffer(hitsBuffer, 0, stagingBuffer, 0, hitsBufferSize);
+    }
 
     device.queue.submit([commandEncoder.finish()])
+
+    // await stagingBuffer.mapAsync(GPUMapMode.READ, 0, hitsBufferSize);
+    // const stagingBufferCopy = stagingBuffer.getMappedRange(0, hitsBufferSize);
+    // const data = stagingBufferCopy.slice(0);
+    // stagingBuffer.unmap();
+    // console.log(new Uint32Array(data));
 
     // requestAnimationFrame(frame);
   }
