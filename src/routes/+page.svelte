@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, setContext } from 'svelte';
   import { init } from '$lib/flames'
+  import { toShader, Linear, Sinusoid, color } from '$lib/math'
 
   let canvas: HTMLCanvasElement;
   let context: GPUCanvasContext;
@@ -36,13 +37,13 @@
     const presentationHeight = Math.floor(canvas.clientHeight * devicePixelRatio);
     const presentationWidth = Math.floor(canvas.clientWidth * devicePixelRatio);
     const superSamplingScale = 1;
-    console.dir(adapter.limits)
+    // console.dir(adapter.limits)
 
     const frame = init({ gpu, device, adapter, canvas, context, presentationWidth, presentationHeight, superSamplingScale });
 
     requestAnimationFrame(frame);
 
-    renderFrame = () => requestAnimationFrame(frame);
+    renderFrame = () => {console.log("re-rendering"); requestAnimationFrame(frame)};
   });
 
   function onKeyDown(e: KeyboardEvent) {

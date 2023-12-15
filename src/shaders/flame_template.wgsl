@@ -1,5 +1,3 @@
-// populates a hits and color buffer with the desired pixel values
-
 struct ColorBuffer {
   values: array<atomic<u32>>,
 };
@@ -40,29 +38,12 @@ fn color_pixel(pos: vec2<f32>, color: vec3<u32>) {
   atomicAdd(&outputHitsBuffer.values[index], 1u);
 }
 
-fn sinusoid() {
-  let CA = vec3(0u, 0u, 255u);
-  let CB = vec3(0u, 255u, 0u);
-  let CC = vec3(255u, 0u, 0u);
-
-  var pos = vec2(random(), random());
-
-  for (var i = 0; i < 20; i++) {
-    pos.x = sin(pos.x);
-    pos.y = sin(pos.y);
-  }
-
-  for (var i = 0; i < 500; i++) {
-    color_pixel(pos, vec3(255u, 255u, 255u));
-    pos.x = sin(pos.x);
-    pos.y = sin(pos.y);
-  }
-}
+// INSERT FLAME HERE
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
   random_state = u32(u32(uniforms.random_seed) + global_id.x);
-  sinusoid();
+  flame();
 }
 
 @compute @workgroup_size(256)

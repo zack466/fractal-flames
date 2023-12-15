@@ -1,6 +1,8 @@
 // based on https://github.com/OmarShehata/webgpu-compute-rasterizer
 import flamesWGSL from '$shaders/flames.wgsl?raw';
+import flameTemplateWGSL from '$shaders/flame_template.wgsl?raw';
 import fullscreenWGSL from '$shaders/fullscreen.wgsl?raw';
+import { toShader, Linear, Sinusoid, color, Horseshoe, Spherical } from '$lib/math'
 
 const COLOR_CHANNELS = 3;
 
@@ -44,6 +46,36 @@ export function init(params: Params) {
     format: presentationFormat,
     alphaMode: 'opaque',
   });
+
+  // generate flame shader
+  const flameShader = flameTemplateWGSL.replace(
+    "// INSERT FLAME HERE",
+    toShader([
+      {
+        params: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
+        weight: 1,
+        name: "f1",
+        variation: Horseshoe,
+        color: color(255, 0, 0)
+      },
+      {
+        params: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
+        weight: 1,
+        name: "f2",
+        variation: Sinusoid,
+        color: color(0, 255, 0)
+      },
+      {
+        params: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
+        weight: 2,
+        name: "f3",
+        variation: Spherical,
+        color: color(0, 255, 255)
+      }
+    ])
+  );
+
+  console.log(flameShader);
 
   // initialize buffers
   const hitsBufferSize = Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight * superSamplingScale * superSamplingScale);
@@ -129,7 +161,7 @@ export function init(params: Params) {
     layout: device.createPipelineLayout({ bindGroupLayouts: [flamesBindGroupLayout] }),
     compute: {
       module: device.createShaderModule({
-        code: flamesWGSL,
+        code: flameShader,
       }),
       entryPoint: "main"
     }
@@ -139,7 +171,7 @@ export function init(params: Params) {
     layout: device.createPipelineLayout({ bindGroupLayouts: [flamesBindGroupLayout] }),
     compute: {
       module: device.createShaderModule({
-        code: flamesWGSL,
+        code: flameShader,
       }),
       entryPoint: "clear"
     }
@@ -226,7 +258,7 @@ export function init(params: Params) {
 
     // flames pass
     {
-      device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([presentationWidth, presentationHeight, superSamplingScale, Math.ceil(Math.random() * 1e12)]))
+      device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([presentationWidth, presentationHeight, superSamplingScale, Math.random() * 1e9]))
       const timesToRun = Math.ceil(presentationWidth * presentationHeight * superSamplingScale * superSamplingScale / 256)
       const passEncoder = commandEncoder.beginComputePass();
       // clear previous pixels
