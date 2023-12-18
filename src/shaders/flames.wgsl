@@ -30,9 +30,9 @@ fn random() -> f32 {
 }
 
 fn color_pixel(pos: vec2<f32>, color: vec3<u32>) {
-  let X = floor(uniforms.screenWidth * f32(uniforms.scale) * pos.x);
-  let Y = floor(uniforms.screenHeight * f32(uniforms.scale) * pos.y);
-  let index = u32(X + Y * uniforms.screenWidth * uniforms.scale);
+  let X = floor(uniforms.screenWidth * pos.x);
+  let Y = floor(uniforms.screenHeight * pos.y);
+  let index = u32(X + Y * uniforms.screenWidth);
 
   atomicAdd(&outputColorBuffer.values[index + 0u], color.r);
   atomicAdd(&outputColorBuffer.values[index + 1u], color.g);

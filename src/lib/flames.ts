@@ -2,9 +2,24 @@
 import flamesWGSL from '$shaders/flames.wgsl?raw';
 import flameTemplateWGSL from '$shaders/flame_template.wgsl?raw';
 import fullscreenWGSL from '$shaders/fullscreen.wgsl?raw';
-import { toShader, Linear, Sinusoid, color, Horseshoe, Spherical } from '$lib/math'
+import { toShader, Linear, Sinusoid, color, Horseshoe, Spherical, Handkerchief } from '$lib/math'
+import { writable } from 'svelte/store';
 
 const COLOR_CHANNELS = 3;
+
+export const FPS = writable(0);
+
+export interface Camera {
+  log_scale: number;
+  x_offset: number;
+  y_offset: number;
+}
+
+export const DEFAULT_CAMERA = {
+  log_scale: 0,
+  x_offset: 0,
+  y_offset: 0,
+};
 
 // Data:
 // hitsStorageBuffer - u32, Height x Width x 1
@@ -34,11 +49,11 @@ export interface Params {
   device: GPUDevice;
   presentationHeight: number;
   presentationWidth: number;
-  superSamplingScale: number;
+  camera: Camera;
 }
 
 export function init(params: Params) {
-  const { gpu, context, device, presentationWidth, presentationHeight, superSamplingScale } = params;
+  const { gpu, context, device, presentationWidth, presentationHeight, camera } = params;
 
   const presentationFormat = gpu.getPreferredCanvasFormat();
   context.configure({
@@ -60,38 +75,37 @@ export function init(params: Params) {
       },
       {
         params: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
-        weight: 1,
+        weight: 10,
         name: "f2",
         variation: Sinusoid,
         color: color(0, 255, 0)
       },
       {
         params: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
-        weight: 2,
+        weight: 1,
         name: "f3",
-        variation: Spherical,
-        color: color(0, 255, 255)
+        variation: Handkerchief,
+        color: color(255, 0, 0)
       }
     ])
   );
 
-  console.log(flameShader);
+  // console.log(flameShader);
 
   // initialize buffers
-  const hitsBufferSize = Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight * superSamplingScale * superSamplingScale);
+  const hitsBufferSize = Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight);
   const hitsBuffer = device.createBuffer({
     size: hitsBufferSize,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
   });
 
-  const colorBufferSize = Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight * superSamplingScale * superSamplingScale) * COLOR_CHANNELS;
+  const colorBufferSize = Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight) * COLOR_CHANNELS;
   const colorBuffer = device.createBuffer({
     size: colorBufferSize,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
   });
 
-  // screen width, screen height, supersampling scale, random seed
-  const uniformBufferSize = 4 * 4;
+  const uniformBufferSize = 6 * 4;
   const uniformBuffer = device.createBuffer({
     size: uniformBufferSize,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -253,13 +267,19 @@ export function init(params: Params) {
     ],
   });
 
+  let t0 = performance.now();
+
   async function frame() {
+    let t1 = performance.now();
+    FPS.set(Math.round(1000 / (t1 - t0)))
+    t0 = t1;
+
     const commandEncoder = device.createCommandEncoder();
 
     // flames pass
     {
-      device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([presentationWidth, presentationHeight, superSamplingScale, Math.random() * 1e9]))
-      const timesToRun = Math.ceil(presentationWidth * presentationHeight * superSamplingScale * superSamplingScale / 256)
+      device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([presentationWidth, presentationHeight, Math.random() * 1e9, camera.log_scale, camera.x_offset, camera.y_offset]))
+      const timesToRun = Math.ceil(presentationWidth * presentationHeight / 256)
       const passEncoder = commandEncoder.beginComputePass();
       // clear previous pixels
       passEncoder.setPipeline(clearPipeline);
@@ -304,7 +324,7 @@ export function init(params: Params) {
     // stagingBuffer.unmap();
     // console.log(new Uint32Array(data));
 
-    // requestAnimationFrame(frame);
+    requestAnimationFrame(frame);
   }
   return frame;
 }

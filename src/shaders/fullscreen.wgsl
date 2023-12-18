@@ -46,38 +46,16 @@ fn frag_main(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f32> {
   let gamma = 2.2;
   let X = floor(coord.x);
   let Y = floor(coord.y);
-  let index = u32(X * uniforms.scale + Y * uniforms.scale * uniforms.screenWidth * uniforms.scale);
+  let index = u32(X + Y * uniforms.screenWidth);
 
-  var hits = 0.0;
-  var r = 0.0;
-  var g = 0.0;
-  var b = 0.0;
-  var maxhits = 0.0;
-  // super sampling (not sure if is actually correct though lol)
-  for (var i = 0u; i < u32(uniforms.scale); i++) {
-    for (var j = 0u; j < u32(uniforms.scale); j++) {
-      let actual_index = u32((X + f32(i)) * uniforms.scale + (Y + f32(j)) * uniforms.scale * uniforms.screenWidth * uniforms.scale);
-      let hits_local = f32(finalHitsBuffer.data[actual_index]);
-      hits = hits + hits_local;
-      maxhits = max(maxhits, hits_local);
+  var hits = f32(finalHitsBuffer.data[index]);
+  var alpha = log(hits) / hits;
 
-      r = r + f32(finalColorBuffer.data[actual_index + 0u]) / 255.0;
-      g = g + f32(finalColorBuffer.data[actual_index + 1u]) / 255.0;
-      b = b + f32(finalColorBuffer.data[actual_index + 2u]) / 255.0;
-    }
-  }
-  // hits = hits / uniforms.scale / uniforms.scale;
+  let R = f32(finalColorBuffer.data[index + 0u]) / 255.0 / hits;
+  let G = f32(finalColorBuffer.data[index + 1u]) / 255.0 / hits;
+  let B = f32(finalColorBuffer.data[index + 2u]) / 255.0 / hits;
 
-  var alpha = log(hits) / maxhits;
-
-  let R = r / hits;
-  let G = g / hits;
-  let B = b / hits;
-  // let R = f32(finalColorBuffer.data[index + 0u]) / 255.0 / hits;
-  // let G = f32(finalColorBuffer.data[index + 1u]) / 255.0 / hits;
-  // let B = f32(finalColorBuffer.data[index + 2u]) / 255.0 / hits;
-
-  var finalColor = vec4<f32>(R * pow(alpha, 1.0 / gamma), G * pow(alpha, 1.0 / gamma), B * pow(alpha, 1.0 / gamma), alpha);
+  var finalColor = vec4<f32>(R * pow(R * alpha, 1.0 / gamma), G * pow(alpha, 1.0 / gamma), B * pow(alpha, 1.0 / gamma), alpha);
 
   return finalColor;
 }

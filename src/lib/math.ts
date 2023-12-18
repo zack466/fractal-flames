@@ -49,12 +49,18 @@ export let Horseshoe: Variation = {
   dataY: "2 * x * y / r",
 }
 
+export let Handkerchief: Variation = {
+  dataX: "r * sin(theta + r)",
+  dataY: "r * cos(theta - r)",
+}
+
 function functionToShader(f: Function) {
   return `
 fn ${f.name}(x0: f32, y0: f32, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) -> vec2<f32> {
   let x = x0 * a + y0 * b + c;
   let y = x0 * d + y0 * e + f;
   let r = sqrt(pow(x, 2) + pow(y, 2));
+  let theta = atan2(x, y);
   return vec2(${f.variation.dataX}, ${f.variation.dataY});
 } `
 }
@@ -69,7 +75,7 @@ function prefixSums(arr: number[]) {
 
 export function toShader(fs: Function[]) {
   let warmupIterations = 20;
-  let totalIterations = 2000;
+  let totalIterations = 10000;
   let totalWeight = fs.reduce((prev, curr) => prev + curr.weight, 0);
   let scaledWeights = fs.map(f => f.weight / totalWeight);
   let prefixWeights = prefixSums(scaledWeights);
