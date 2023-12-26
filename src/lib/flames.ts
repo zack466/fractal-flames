@@ -74,25 +74,18 @@ export function init(params: Params) {
     toShader([
       {
         params: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
-        weight: 1,
+        weight: 5,
         name: "f1",
         variation: Horseshoe,
         color: color(255, 0, 0)
       },
       {
         params: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
-        weight: 10,
+        weight: 1,
         name: "f2",
-        variation: Sinusoid,
+        variation: Handkerchief,
         color: color(0, 255, 0)
       },
-      {
-        params: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
-        weight: 1,
-        name: "f3",
-        variation: Handkerchief,
-        color: color(255, 0, 0)
-      }
     ])
   );
 
