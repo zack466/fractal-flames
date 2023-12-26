@@ -46,7 +46,7 @@ fn vert_main(@builtin(vertex_index) VertexIndex: u32) -> VertexOutput {
 
 fn inv_rsqrt(x: f32) -> f32 {
   let p = 2.0 * x - 1.0;
-  return p / (1 - p * p);
+  return p / (1.0 - p * p);
 }
 
 @fragment

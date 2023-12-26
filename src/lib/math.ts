@@ -40,13 +40,13 @@ export let Sinusoid: Variation = {
 }
 
 export let Spherical: Variation = {
-  dataX: "x * sqrt(1 / (r * r))",
-  dataY: "y * sqrt(1 / (r * r))",
+  dataX: "x * sqrt(1.0 / (r * r))",
+  dataY: "y * sqrt(1.0 / (r * r))",
 }
 
 export let Horseshoe: Variation = {
   dataX: "(x - y) * (x + y) / r",
-  dataY: "2 * x * y / r",
+  dataY: "2.0 * x * y / r",
 }
 
 export let Handkerchief: Variation = {
@@ -59,7 +59,7 @@ function functionToShader(f: Function) {
 fn ${f.name}(x0: f32, y0: f32, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) -> vec2<f32> {
   let x = x0 * a + y0 * b + c;
   let y = x0 * d + y0 * e + f;
-  let r = sqrt(pow(x, 2) + pow(y, 2));
+  let r = sqrt(pow(x, 2.0) + pow(y, 2.0));
   let theta = atan2(x, y);
   return vec2(${f.variation.dataX}, ${f.variation.dataY});
 } `
@@ -89,7 +89,7 @@ fn flame(starting_pos: vec2<f32>) {
     let r = random();
     if (false) {
     }${fs.map((f, i) =>
-  ` else if (r < ${prefixWeights[i]}) {
+  ` else if (r < ${prefixWeights[i].toFixed(4)}) {
       pos = ${f.name}(pos.x, pos.y, ${f.params[0]}, ${f.params[1]}, ${f.params[2]}, ${f.params[3]}, ${f.params[4]}, ${f.params[5]});
     }`).join("")}
   }
@@ -98,7 +98,7 @@ fn flame(starting_pos: vec2<f32>) {
     let r = random();
     if (false) {
     }${fs.map((f, i) =>
-  ` else if (r < ${prefixWeights[i]}) {
+  ` else if (r < ${prefixWeights[i].toFixed(4)}) {
       pos = ${f.name}(pos.x, pos.y, ${f.params[0]}, ${f.params[1]}, ${f.params[2]}, ${f.params[3]}, ${f.params[4]}, ${f.params[5]});
       color_pixel(pos, vec3(${f.color.r}u, ${f.color.g}u, ${f.color.b}u));
     }`).join("")}

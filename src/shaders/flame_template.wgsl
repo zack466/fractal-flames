@@ -38,7 +38,7 @@ fn rsqrt(x: f32) -> f32 {
 fn color_pixel(pos: vec2<f32>, color: vec3<u32>) {
   let x = (pos.x - uniforms.cam_x) * exp2(uniforms.cam_scale) + 0.25;
   let y = (pos.y - uniforms.cam_y) * exp2(uniforms.cam_scale) + 0.25;
-  if (x > 1.0 || x < 0.0 || y > 1.0 || y < 0) {
+  if (x > 1.0 || x < 0.0 || y > 1.0 || y < 0.0) {
     return;
   }
   let X = floor(uniforms.screenWidth * x);

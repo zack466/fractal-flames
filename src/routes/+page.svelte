@@ -111,6 +111,7 @@
     <p>This is a super basic and incomplete implementation of <a href="https://flam3.com/flame_draves.pdf">fractal flames</a> using WebGPU.</p>
     <p>I'm planning to add more stuff, but for now, just enjoy the cool imagery.</p>
     <p>The code is located in <a href="https://github.com/zack466/fractal-flames">this</a> Github repository.</p>
+    <p>Note: WebGPU is currently only supported in Google Chrome, so if you're not seeing anything, that would probably be why. It should be coming to <a href="https://github.com/gpuweb/gpuweb/wiki/Implementation-Status">Firefox and Safari</a> soon, though!</p>
 
     <h2>Controls</h2>
     <p>Generate a new random fractal flame by reloading (I would recommend doing this a lot).</p>
