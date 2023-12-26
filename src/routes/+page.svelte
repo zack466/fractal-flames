@@ -43,9 +43,10 @@
     canvas.height = 800;
     const presentationHeight = Math.floor(canvas.clientHeight * devicePixelRatio);
     const presentationWidth = Math.floor(canvas.clientWidth * devicePixelRatio);
+    const resolution = 200;
     // console.dir(adapter.limits)
 
-    const frame = init({ gpu, device, adapter, canvas, context, presentationWidth, presentationHeight, camera });
+    const frame = init({ gpu, device, adapter, canvas, context, presentationWidth, presentationHeight, camera, resolution });
 
     requestAnimationFrame(frame);
 

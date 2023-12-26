@@ -38,8 +38,13 @@ export const DEFAULT_CAMERA = {
 // 3. (optional) filtering, motion blur, etc
 // 4. use hardcoded vertices to draw pixels to screen
 
-// other TODOs:
-// - increase parallelism with even more buffers (if needed)
+// other things to try:
+// - separate variations into their own buffers
+// - compress/decompress coordinates using something like rsqrt, atan
+// - store colors/densities in log space instead of linear
+// - maybe instead of picking a few random points, pick many starting points but run less iterations
+//   - e.g. sample 1000x1000 equally spaced points from unit grid, run 100 iterations each
+// - make RNG more advanced (maybe not necessary? seems good enough)
 
 export interface Params {
   gpu: GPU;
@@ -50,10 +55,11 @@ export interface Params {
   presentationHeight: number;
   presentationWidth: number;
   camera: Camera;
+  resolution: number;
 }
 
 export function init(params: Params) {
-  const { gpu, context, device, presentationWidth, presentationHeight, camera } = params;
+  const { gpu, context, device, presentationWidth, presentationHeight, camera, resolution } = params;
 
   const presentationFormat = gpu.getPreferredCanvasFormat();
   context.configure({
@@ -105,7 +111,7 @@ export function init(params: Params) {
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
   });
 
-  const uniformBufferSize = 6 * 4;
+  const uniformBufferSize = 8 * 4;
   const uniformBuffer = device.createBuffer({
     size: uniformBufferSize,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -123,7 +129,7 @@ export function init(params: Params) {
       // hits buffer
       {
         binding: 0,
-        visibility: GPUShaderStage.COMPUTE, 
+        visibility: GPUShaderStage.COMPUTE,
         buffer: {
           type: "storage"
         }
@@ -131,7 +137,7 @@ export function init(params: Params) {
       // color buffer
       {
         binding: 1,
-        visibility: GPUShaderStage.COMPUTE, 
+        visibility: GPUShaderStage.COMPUTE,
         buffer: {
           type: "storage"
         }
@@ -163,7 +169,7 @@ export function init(params: Params) {
         }
       },
       {
-        binding: 2, 
+        binding: 2,
         resource: {
           buffer: uniformBuffer
         }
@@ -199,7 +205,7 @@ export function init(params: Params) {
         buffer: {
           type: "uniform"
         }
-      }, 
+      },
       {
         binding: 1, // the hits buffer
         visibility: GPUShaderStage.FRAGMENT,
@@ -218,9 +224,9 @@ export function init(params: Params) {
   });
 
   const fullscreenPipeline = device.createRenderPipeline({
-    layout:  device.createPipelineLayout({
-        bindGroupLayouts: [fullscreenBindGroupLayout]
-      }),
+    layout: device.createPipelineLayout({
+      bindGroupLayouts: [fullscreenBindGroupLayout]
+    }),
     vertex: {
       module: device.createShaderModule({
         code: fullscreenWGSL,
@@ -247,19 +253,19 @@ export function init(params: Params) {
     layout: fullscreenBindGroupLayout,
     entries: [
       {
-        binding: 0, 
+        binding: 0,
         resource: {
           buffer: uniformBuffer
         }
       },
       {
-        binding: 1, 
+        binding: 1,
         resource: {
           buffer: hitsBuffer
         }
       },
       {
-        binding: 2, 
+        binding: 2,
         resource: {
           buffer: colorBuffer
         }
@@ -278,7 +284,19 @@ export function init(params: Params) {
 
     // flames pass
     {
-      device.queue.writeBuffer(uniformBuffer, 0, new Float32Array([presentationWidth, presentationHeight, Math.random() * 1e9, camera.log_scale, camera.x_offset, camera.y_offset]))
+      device.queue.writeBuffer(
+        uniformBuffer,
+        0,
+        new Float32Array([
+          presentationWidth,
+          presentationHeight,
+          Math.random() * 1e9,
+          camera.log_scale,
+          camera.x_offset,
+          camera.y_offset,
+          resolution
+        ])
+      )
       const timesToRun = Math.ceil(presentationWidth * presentationHeight / 256)
       const passEncoder = commandEncoder.beginComputePass();
       // clear previous pixels
@@ -288,7 +306,7 @@ export function init(params: Params) {
       // compute new pixels
       passEncoder.setPipeline(flamesPipeline);
       passEncoder.setBindGroup(0, flamesBindGroup);
-      passEncoder.dispatchWorkgroups(64);
+      passEncoder.dispatchWorkgroups(Math.ceil(resolution / 8), Math.ceil(resolution / 8));
       passEncoder.end();
     }
     // fullscreen pass

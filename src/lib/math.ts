@@ -75,25 +75,32 @@ function prefixSums(arr: number[]) {
 
 export function toShader(fs: Function[]) {
   let warmupIterations = 20;
-  let totalIterations = 10000;
+  let totalIterations = 200;
   let totalWeight = fs.reduce((prev, curr) => prev + curr.weight, 0);
   let scaledWeights = fs.map(f => f.weight / totalWeight);
   let prefixWeights = prefixSums(scaledWeights);
   let flameFunction = `
 ${fs.map(functionToShader).join("\n\n")}
 
-fn flame() {
-  var pos = vec2(random(), random());
+fn flame(starting_pos: vec2<f32>) {
+  var pos = starting_pos;
 
-  for (var i = 0; i < ${totalIterations}; i++) {
+  for (var i = 0; i < ${warmupIterations}; i++) {
     let r = random();
     if (false) {
     }${fs.map((f, i) =>
   ` else if (r < ${prefixWeights[i]}) {
       pos = ${f.name}(pos.x, pos.y, ${f.params[0]}, ${f.params[1]}, ${f.params[2]}, ${f.params[3]}, ${f.params[4]}, ${f.params[5]});
-      if (i >= ${warmupIterations}) {
-        color_pixel(pos, vec3(${f.color.r}u, ${f.color.g}u, ${f.color.b}u));
-      }
+    }`).join("")}
+  }
+
+  for (var i = 0; i < ${totalIterations - warmupIterations}; i++) {
+    let r = random();
+    if (false) {
+    }${fs.map((f, i) =>
+  ` else if (r < ${prefixWeights[i]}) {
+      pos = ${f.name}(pos.x, pos.y, ${f.params[0]}, ${f.params[1]}, ${f.params[2]}, ${f.params[3]}, ${f.params[4]}, ${f.params[5]});
+      color_pixel(pos, vec3(${f.color.r}u, ${f.color.g}u, ${f.color.b}u));
     }`).join("")}
   }
 }`

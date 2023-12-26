@@ -13,8 +13,11 @@ struct HitsBuffer {
 struct Uniforms {
   screenWidth: f32,
   screenHeight: f32,
-  scale: f32,
   random_seed: f32,
+  cam_scale: f32,
+  cam_x: f32,
+  cam_y: f32,
+  resolution: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms : Uniforms;
@@ -39,6 +42,11 @@ fn vert_main(@builtin(vertex_index) VertexIndex: u32) -> VertexOutput {
   var output: VertexOutput;
   output.Position = vec4<f32>(pos[VertexIndex], 0.0, 1.0);
   return output;
+}
+
+fn inv_rsqrt(x: f32) -> f32 {
+  let p = 2.0 * x - 1.0;
+  return p / (1 - p * p);
 }
 
 @fragment
