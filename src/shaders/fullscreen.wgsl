@@ -30,40 +30,63 @@ struct VertexOutput {
 
 @vertex
 fn vert_main(@builtin(vertex_index) VertexIndex: u32) -> VertexOutput {
-  var pos = array<vec2<f32>, 6>(
-  vec2<f32>(1.0, 1.0),
-  vec2<f32>(1.0, -1.0),
-  vec2<f32>(-1.0, -1.0),
-  vec2<f32>(1.0, 1.0),
-  vec2<f32>(-1.0, -1.0),
-  vec2<f32>(-1.0, 1.0)
-);
+    var pos = array<vec2<f32>, 6>(
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(-1.0, 1.0)
+    );
 
-  var output: VertexOutput;
-  output.Position = vec4<f32>(pos[VertexIndex], 0.0, 1.0);
-  return output;
+    var output: VertexOutput;
+    output.Position = vec4<f32>(pos[VertexIndex], 0.0, 1.0);
+    return output;
 }
 
 fn inv_rsqrt(x: f32) -> f32 {
-  let p = 2.0 * x - 1.0;
-  return p / (1.0 - p * p);
+    let p = 2.0 * x - 1.0;
+    return p / (1.0 - p * p);
 }
+
+fn clamp(x: f32, low: f32, high: f32) -> f32 {
+    if x < low {
+        return low;
+    } else if x > high {
+        return high;
+    } else {
+        return x;
+    }
+}
+
 
 @fragment
 fn frag_main(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f32> {
-  let gamma = 2.2;
-  let X = floor(coord.x);
-  let Y = floor(coord.y);
-  let index = u32(X + Y * uniforms.screenWidth);
+    let gamma = 2.2;
+    let X = floor(coord.x);
+    let Y = floor(coord.y);
+    let index = u32(X + Y * uniforms.screenWidth);
 
-  var hits = f32(finalHitsBuffer.data[index]);
-  var alpha = log(hits) / hits;
+    var max_hits = 100000.0;
+    // for (var i = 0u; i < u32(uniforms.screenWidth); i++) {
+    //     for (var j = 0u; j < u32(uniforms.screenHeight); j++) {
+    //       max_hits = max(max_hits, f32(finalHitsBuffer.data[ i + j * u32(uniforms.screenWidth) ]));
+    //     }
+    // }
 
-  let R = f32(finalColorBuffer.data[index + 0u]) / 255.0 / hits;
-  let G = f32(finalColorBuffer.data[index + 1u]) / 255.0 / hits;
-  let B = f32(finalColorBuffer.data[index + 2u]) / 255.0 / hits;
+    var hits = f32(finalHitsBuffer.data[index]);
+    var alpha = log(hits) / log(max_hits);
 
-  var finalColor = vec4<f32>(R * pow(R * alpha, 1.0 / gamma), G * pow(alpha, 1.0 / gamma), B * pow(alpha, 1.0 / gamma), alpha);
+    let R = (f32(finalColorBuffer.data[index + 0u]) / 255.0) / hits;
+    let G = (f32(finalColorBuffer.data[index + 1u]) / 255.0) / hits;
+    let B = (f32(finalColorBuffer.data[index + 2u]) / 255.0) / hits;
 
-  return finalColor;
+    var finalColor = vec4<f32>(
+        R * pow(alpha, 1.0 / gamma),
+        G * pow(alpha, 1.0 / gamma),
+        B * pow(alpha, 1.0 / gamma),
+        1.0,
+    );
+
+    return finalColor;
 }
