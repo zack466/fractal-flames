@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, setContext } from 'svelte';
-	import { init, FPS, DEFAULT_CAMERA, initGPU } from '$lib/flames';
+	import { init, FPS, CLEAR, DEFAULT_CAMERA, initGPU } from '$lib/flames';
 	import type { Camera } from '$lib/flames';
 	import { toShader, Linear, Sinusoid, color } from '$lib/math';
 
@@ -72,36 +72,42 @@
 			}
 			case 37: {
 				// left arrow
+        CLEAR.set(true);
 				camera.x_offset -= 0.01 * Math.pow(2, -camera.log_scale);
 				e.preventDefault();
 				break;
 			}
 			case 39: {
 				// right arrow
+        CLEAR.set(true);
 				camera.x_offset += 0.01 * Math.pow(2, -camera.log_scale);
 				e.preventDefault();
 				break;
 			}
 			case 38: {
 				// up arrow
+        CLEAR.set(true);
 				camera.y_offset -= 0.01 * Math.pow(2, -camera.log_scale);
 				e.preventDefault();
 				break;
 			}
 			case 40: {
 				// down arrow
+        CLEAR.set(true);
 				camera.y_offset += 0.01 * Math.pow(2, -camera.log_scale);
 				e.preventDefault();
 				break;
 			}
 			case 187: {
 				// plus key
+        CLEAR.set(true);
 				camera.log_scale += 0.05;
 				e.preventDefault();
 				break;
 			}
 			case 189: {
 				// minus key
+        CLEAR.set(true);
 				camera.log_scale -= 0.05;
 				e.preventDefault();
 				break;

@@ -2,12 +2,8 @@
 // Takes a buffer with color data for each pixel and "outputs" it to the screen.
 // Uses hardcoded vertices to represent the entire screen and returns color info from the input color buffer in the fragment shader.
 
-struct ColorData {
-  data: array<u32>,
-};
-
-struct HitsBuffer {
-  data: array<u32>,
+struct FlameBuffer {
+  values: array<u32>,
 };
 
 struct Uniforms {
@@ -20,9 +16,13 @@ struct Uniforms {
   resolution: f32,
 };
 
+struct MaxHits {
+  value: u32,
+}
+
 @group(0) @binding(0) var<uniform> uniforms : Uniforms;
-@group(0) @binding(1) var<storage, read> finalHitsBuffer : HitsBuffer;
-@group(0) @binding(2) var<storage, read> finalColorBuffer : ColorData;
+@group(0) @binding(1) var<storage, read> flameBuffer : FlameBuffer;
+@group(0) @binding(2) var<storage, read> maxHitsBuffer : MaxHits;
 
 struct VertexOutput {
   @builtin(position) Position: vec4<f32>,
@@ -65,27 +65,28 @@ fn frag_main(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f32> {
     let gamma = 2.2;
     let X = floor(coord.x);
     let Y = floor(coord.y);
-    let index = u32(X + Y * uniforms.screenWidth);
+    let index = u32(X + Y * uniforms.screenWidth) * 4u;
 
-    var max_hits = 100000.0;
+    var max_hits = f32(maxHitsBuffer.value);
+    // fast max in log time? (divide and conquer)
     // for (var i = 0u; i < u32(uniforms.screenWidth); i++) {
     //     for (var j = 0u; j < u32(uniforms.screenHeight); j++) {
     //       max_hits = max(max_hits, f32(finalHitsBuffer.data[ i + j * u32(uniforms.screenWidth) ]));
     //     }
     // }
 
-    var hits = f32(finalHitsBuffer.data[index]);
+    let hits = f32(flameBuffer.values[index + 3u]);
     var alpha = log(hits) / log(max_hits);
 
-    let R = (f32(finalColorBuffer.data[index + 0u]) / 255.0) / hits;
-    let G = (f32(finalColorBuffer.data[index + 1u]) / 255.0) / hits;
-    let B = (f32(finalColorBuffer.data[index + 2u]) / 255.0) / hits;
+    let R = (f32(flameBuffer.values[index + 0u]) / 255.0) / hits;
+    let G = (f32(flameBuffer.values[index + 1u]) / 255.0) / hits;
+    let B = (f32(flameBuffer.values[index + 2u]) / 255.0) / hits;
 
     var finalColor = vec4<f32>(
         R * pow(alpha, 1.0 / gamma),
         G * pow(alpha, 1.0 / gamma),
         B * pow(alpha, 1.0 / gamma),
-        1.0,
+        alpha,
     );
 
     return finalColor;

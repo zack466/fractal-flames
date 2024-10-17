@@ -1,10 +1,10 @@
-struct ColorBuffer {
+struct FlameBuffer {
   values: array<atomic<u32>>,
 };
 
-struct HitsBuffer {
-  values: array<atomic<u32>>,
-};
+struct MaxHits {
+  value: atomic<u32>,
+}
 
 struct Uniforms {
   screenWidth: f32,
@@ -16,9 +16,10 @@ struct Uniforms {
   resolution: f32,
 };
 
-@group(0) @binding(0) var<storage, read_write> outputHitsBuffer : HitsBuffer;
-@group(0) @binding(1) var<storage, read_write> outputColorBuffer : ColorBuffer;
+@group(0) @binding(0) var<storage, read_write> outputFlameBuffer : FlameBuffer;
+@group(0) @binding(1) var<storage, read_write> outputAvgFlameBuffer : FlameBuffer;
 @group(0) @binding(2) var<uniform> uniforms : Uniforms;
+@group(0) @binding(3) var<storage, read_write> maxHits : MaxHits;
 
 var<private> random_state: u32;
 
@@ -43,12 +44,13 @@ fn color_pixel(pos: vec2<f32>, color: vec3<u32>) {
   }
   let X = floor(uniforms.screenWidth * x);
   let Y = floor(uniforms.screenHeight * y);
-  let index = u32(X + Y * uniforms.screenWidth);
+  let index = u32(X + Y * uniforms.screenWidth) * 4u;
 
-  atomicAdd(&outputColorBuffer.values[index + 0u], color.r);
-  atomicAdd(&outputColorBuffer.values[index + 1u], color.g);
-  atomicAdd(&outputColorBuffer.values[index + 2u], color.b);
-  atomicAdd(&outputHitsBuffer.values[index], 1u);
+  atomicAdd(&outputFlameBuffer.values[index + 0u], color.r);
+  atomicAdd(&outputFlameBuffer.values[index + 1u], color.g);
+  atomicAdd(&outputFlameBuffer.values[index + 2u], color.b);
+  atomicAdd(&outputFlameBuffer.values[index + 3u], 1u);
+  atomicMax(&maxHits.value, atomicLoad(&outputFlameBuffer.values[index + 3u]));
 }
 
 // INSERT FLAME HERE
@@ -61,11 +63,30 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 }
 
 @compute @workgroup_size(256)
-fn clear(@builtin(global_invocation_id) global_id : vec3<u32>) {
-  let index = global_id.x;
+fn avg(@builtin(global_invocation_id) global_id : vec3<u32>) {
+  let index = global_id.x * 4u;
 
-  atomicStore(&outputColorBuffer.values[index + 0u], 0u);
-  atomicStore(&outputColorBuffer.values[index + 1u], 0u);
-  atomicStore(&outputColorBuffer.values[index + 2u], 0u);
-  atomicStore(&outputHitsBuffer.values[index], 0u);
+  let R1 = atomicLoad(&outputFlameBuffer.values[index + 0u]);
+  let G1 = atomicLoad(&outputFlameBuffer.values[index + 1u]);
+  let B1 = atomicLoad(&outputFlameBuffer.values[index + 2u]);
+  let H1 = atomicLoad(&outputFlameBuffer.values[index + 3u]);
+  let R2 = atomicLoad(&outputAvgFlameBuffer.values[index + 0u]);
+  let G2 = atomicLoad(&outputAvgFlameBuffer.values[index + 1u]);
+  let B2 = atomicLoad(&outputAvgFlameBuffer.values[index + 2u]);
+  let H2 = atomicLoad(&outputAvgFlameBuffer.values[index + 3u]);
+  atomicStore(&outputAvgFlameBuffer.values[index + 0u], (R1 + R2) / 2u);
+  atomicStore(&outputAvgFlameBuffer.values[index + 1u], (G1 + G2) / 2u);
+  atomicStore(&outputAvgFlameBuffer.values[index + 2u], (B1 + B2) / 2u);
+  atomicStore(&outputAvgFlameBuffer.values[index + 3u], (H1 + H2) / 2u);
+}
+
+@compute @workgroup_size(256)
+fn clear(@builtin(global_invocation_id) global_id : vec3<u32>) {
+  let index = global_id.x * 4u;
+
+  atomicStore(&outputFlameBuffer.values[index + 0u], 0u);
+  atomicStore(&outputFlameBuffer.values[index + 1u], 0u);
+  atomicStore(&outputFlameBuffer.values[index + 2u], 0u);
+  atomicStore(&outputFlameBuffer.values[index + 3u], 0u);
+  atomicStore(&maxHits.value, 0u);
 }

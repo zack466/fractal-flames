@@ -75,7 +75,7 @@ function prefixSums(arr: number[]) {
 
 export function toShader(fs: Function[]) {
   let warmupIterations = 20;
-  let totalIterations = 200;
+  let totalIterations = 250;
   let totalWeight = fs.reduce((prev, curr) => prev + curr.weight, 0);
   let scaledWeights = fs.map(f => f.weight / totalWeight);
   let prefixWeights = prefixSums(scaledWeights);

@@ -3,11 +3,12 @@ import flamesWGSL from '$shaders/flames.wgsl?raw';
 import flameTemplateWGSL from '$shaders/flame_template.wgsl?raw';
 import fullscreenWGSL from '$shaders/fullscreen.wgsl?raw';
 import { toShader, Linear, Sinusoid, color, Horseshoe, Spherical, Handkerchief } from '$lib/math';
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 
-const COLOR_CHANNELS = 3;
+const CHANNELS = 4;
 
 export const FPS = writable(0);
+export const CLEAR = writable(false);
 
 export interface Camera {
 	log_scale: number;
@@ -21,22 +22,51 @@ export const DEFAULT_CAMERA = {
 	y_offset: 0
 };
 
+class Uniforms {
+	constructor(
+		public presentationWidth: number = 0,
+		public presentationHeight: number = 0,
+		public rng: number = 0,
+		public log_scale: number = 0,
+		public x_offset: number = 0,
+		public y_offset: number = 0,
+		public resolution: number = 0
+	) {}
+
+	toBuffer() {
+		return new Float32Array([
+			this.presentationWidth,
+			this.presentationHeight,
+			this.rng,
+			this.log_scale,
+			this.x_offset,
+			this.y_offset,
+			this.resolution
+		]);
+	}
+}
+
+const uniform_keys = Object.keys(new Uniforms());
+
 // Data:
-// hitsStorageBuffer - u32, Height x Width x 1
-// colorStorageBuffer - f32, Height x Width x 3
+// flameBuffer - u32, Height x Width x 4  // RGBA
+//
+// flameAvgBuffer - f32, Height x Width x 4  // RGBA
+//
 // parameterBuffer (uniform) - f32
 
 // 0. compile shaders with function variations and parameters
 
 // compute shader:
-// 1. run many fractal flames in parallel
-//  - addAtomic to update hits
-//  - addAtomic to update colors (average)
+// 1. run flames simulation, update flameBuffer
+//  - addAtomic to update color/hits
+//
+// 2. average flameBuffer in flameAvgBuffer
 
 // draw fractal to screen
-// 2. apply log-density, coloring, gamma, etc
-// 3. (optional) filtering, motion blur, etc
-// 4. use hardcoded vertices to draw pixels to screen
+// 3. apply log-density, coloring, gamma, etc
+// 4. (optional) filtering, motion blur, etc
+// 5. use hardcoded vertices to draw pixels to screen (fullscreen shader)
 
 // other things to try:
 // - separate variations into their own buffers
@@ -129,35 +159,39 @@ export function init(params: Params) {
 	// console.log(flameShader);
 
 	// initialize buffers
-	const hitsBufferSize = Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight);
-	const hitsBuffer = device.createBuffer({
-		size: hitsBufferSize,
+
+	const flameBufferSize =
+		Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight) * CHANNELS;
+	const flameBuffer = device.createBuffer({
+		size: flameBufferSize,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+	});
+	const flameAvgBuffer = device.createBuffer({
+		size: flameBufferSize,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
 	});
 
-	const colorBufferSize =
-		Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight) * COLOR_CHANNELS;
-	const colorBuffer = device.createBuffer({
-		size: colorBufferSize,
+	const maxHitsBuffer = device.createBuffer({
+		size: Uint32Array.BYTES_PER_ELEMENT * 1,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
 	});
 
-	const uniformBufferSize = 8 * 4;
+	const uniformBufferSize = uniform_keys.length * 4;
 	const uniformBuffer = device.createBuffer({
 		size: uniformBufferSize,
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 	});
 
-	// for readin data from the gpu
+	// for reading data from the gpu
 	const stagingBuffer = device.createBuffer({
-		size: hitsBufferSize,
+		size: flameBufferSize,
 		usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
 	});
 
 	// set up bind groups for each pipeline
-	const flamesBindGroupLayout = device.createBindGroupLayout({
+	const flameBindGroupLayout = device.createBindGroupLayout({
 		entries: [
-			// hits buffer
+			// flame buffer
 			{
 				binding: 0,
 				visibility: GPUShaderStage.COMPUTE,
@@ -165,8 +199,8 @@ export function init(params: Params) {
 					type: 'storage'
 				}
 			},
-			// color buffer
 			{
+				// flame avg buffer
 				binding: 1,
 				visibility: GPUShaderStage.COMPUTE,
 				buffer: {
@@ -180,23 +214,30 @@ export function init(params: Params) {
 				buffer: {
 					type: 'uniform'
 				}
+			},
+			{
+				binding: 3,
+				visibility: GPUShaderStage.COMPUTE,
+				buffer: {
+					type: 'storage'
+				}
 			}
 		]
 	});
 
-	const flamesBindGroup = device.createBindGroup({
-		layout: flamesBindGroupLayout,
+	const flameBindGroup = device.createBindGroup({
+		layout: flameBindGroupLayout,
 		entries: [
 			{
 				binding: 0,
 				resource: {
-					buffer: hitsBuffer
+					buffer: flameBuffer
 				}
 			},
 			{
 				binding: 1,
 				resource: {
-					buffer: colorBuffer
+					buffer: flameAvgBuffer
 				}
 			},
 			{
@@ -204,12 +245,18 @@ export function init(params: Params) {
 				resource: {
 					buffer: uniformBuffer
 				}
+			},
+			{
+				binding: 3,
+				resource: {
+					buffer: maxHitsBuffer
+				}
 			}
 		]
 	});
 
-	const flamesPipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({ bindGroupLayouts: [flamesBindGroupLayout] }),
+	const flamePipeline = device.createComputePipeline({
+		layout: device.createPipelineLayout({ bindGroupLayouts: [flameBindGroupLayout] }),
 		compute: {
 			module: device.createShaderModule({
 				code: flameShader
@@ -219,12 +266,22 @@ export function init(params: Params) {
 	});
 
 	const clearPipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({ bindGroupLayouts: [flamesBindGroupLayout] }),
+		layout: device.createPipelineLayout({ bindGroupLayouts: [flameBindGroupLayout] }),
 		compute: {
 			module: device.createShaderModule({
 				code: flameShader
 			}),
 			entryPoint: 'clear'
+		}
+	});
+
+	const avgPipeline = device.createComputePipeline({
+		layout: device.createPipelineLayout({ bindGroupLayouts: [flameBindGroupLayout] }),
+		compute: {
+			module: device.createShaderModule({
+				code: flameShader
+			}),
+			entryPoint: 'avg'
 		}
 	});
 
@@ -238,14 +295,14 @@ export function init(params: Params) {
 				}
 			},
 			{
-				binding: 1, // the hits buffer
+				binding: 1, // flame buffer
 				visibility: GPUShaderStage.FRAGMENT,
 				buffer: {
 					type: 'read-only-storage'
 				}
 			},
 			{
-				binding: 2, // the color buffer
+				binding: 2, // max hits
 				visibility: GPUShaderStage.FRAGMENT,
 				buffer: {
 					type: 'read-only-storage'
@@ -292,19 +349,24 @@ export function init(params: Params) {
 			{
 				binding: 1,
 				resource: {
-					buffer: hitsBuffer
+					buffer: flameBuffer
 				}
 			},
 			{
 				binding: 2,
 				resource: {
-					buffer: colorBuffer
+					buffer: maxHitsBuffer
 				}
 			}
 		]
 	});
 
 	let t0 = performance.now();
+
+  let shouldClear = false;
+  CLEAR.subscribe((value) => {
+    shouldClear = value;
+  });
 
 	async function frame() {
 		let t1 = performance.now();
@@ -318,7 +380,7 @@ export function init(params: Params) {
 			device.queue.writeBuffer(
 				uniformBuffer,
 				0,
-				new Float32Array([
+				new Uniforms(
 					presentationWidth,
 					presentationHeight,
 					Math.random() * 1e9,
@@ -326,17 +388,24 @@ export function init(params: Params) {
 					camera.x_offset,
 					camera.y_offset,
 					resolution
-				])
+				).toBuffer()
 			);
-			const timesToRun = Math.ceil((presentationWidth * presentationHeight) / 256);
 			const passEncoder = commandEncoder.beginComputePass();
-			// clear previous pixels
-			passEncoder.setPipeline(clearPipeline);
-			passEncoder.setBindGroup(0, flamesBindGroup);
+
+			// clear or average previous pixels
+			if (shouldClear) {
+        CLEAR.set(false);
+				passEncoder.setPipeline(clearPipeline);
+			} else {
+				passEncoder.setPipeline(avgPipeline);
+			}
+			passEncoder.setBindGroup(0, flameBindGroup);
+			const timesToRun = Math.ceil((presentationWidth * presentationHeight) / 256);
 			passEncoder.dispatchWorkgroups(timesToRun);
+
 			// compute new pixels
-			passEncoder.setPipeline(flamesPipeline);
-			passEncoder.setBindGroup(0, flamesBindGroup);
+			passEncoder.setPipeline(flamePipeline);
+			passEncoder.setBindGroup(0, flameBindGroup);
 			passEncoder.dispatchWorkgroups(Math.ceil(resolution / 8), Math.ceil(resolution / 8));
 			passEncoder.end();
 		}
