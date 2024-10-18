@@ -2,6 +2,7 @@
 import flamesWGSL from '$shaders/flames.wgsl?raw';
 import flameTemplateWGSL from '$shaders/flame_template.wgsl?raw';
 import fullscreenWGSL from '$shaders/fullscreen.wgsl?raw';
+import filterWGSL from '$shaders/filter.wgsl?raw';
 import { toShader, Linear, Sinusoid, color, Horseshoe, Spherical, Handkerchief } from '$lib/math';
 import { writable, get } from 'svelte/store';
 
@@ -75,6 +76,10 @@ const uniform_keys = Object.keys(new Uniforms());
 // - maybe instead of picking a few random points, pick many starting points but run less iterations
 //   - e.g. sample 1000x1000 equally spaced points from unit grid, run 100 iterations each
 // - make RNG more advanced (maybe not necessary? seems good enough)
+// 
+// TODO:
+//  - density-aware filtering
+//  - remove random branches using precomputed permutations
 //
 export async function initGPU() {
 	const gpu = navigator.gpu;
@@ -137,7 +142,7 @@ export function init(params: Params) {
 				weight: 5,
 				name: 'f1',
 				variation: Horseshoe,
-				color: color(255, 0, 0)
+				color: color(0, 255, 255)
 			},
 			{
 				params: [
@@ -151,7 +156,7 @@ export function init(params: Params) {
 				weight: 1,
 				name: 'f2',
 				variation: Handkerchief,
-				color: color(0, 255, 0)
+				color: color(255, 0, 255)
 			}
 		])
 	);
@@ -167,6 +172,10 @@ export function init(params: Params) {
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
 	});
 	const flameAvgBuffer = device.createBuffer({
+		size: flameBufferSize,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+	});
+	const flameOutputBuffer = device.createBuffer({
 		size: flameBufferSize,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
 	});
@@ -207,16 +216,24 @@ export function init(params: Params) {
 					type: 'storage'
 				}
 			},
+			{
+				// flame output buffer
+				binding: 2,
+				visibility: GPUShaderStage.COMPUTE,
+				buffer: {
+					type: 'storage'
+				}
+			},
 			// params (uniform)
 			{
-				binding: 2,
+				binding: 3,
 				visibility: GPUShaderStage.COMPUTE,
 				buffer: {
 					type: 'uniform'
 				}
 			},
-			{
-				binding: 3,
+			{ // max hits
+				binding: 4,
 				visibility: GPUShaderStage.COMPUTE,
 				buffer: {
 					type: 'storage'
@@ -243,11 +260,17 @@ export function init(params: Params) {
 			{
 				binding: 2,
 				resource: {
-					buffer: uniformBuffer
+					buffer: flameOutputBuffer
 				}
 			},
 			{
 				binding: 3,
+				resource: {
+					buffer: uniformBuffer
+				}
+			},
+			{
+				binding: 4,
 				resource: {
 					buffer: maxHitsBuffer
 				}
@@ -282,6 +305,16 @@ export function init(params: Params) {
 				code: flameShader
 			}),
 			entryPoint: 'avg'
+		}
+	});
+
+	const filterPipeline = device.createComputePipeline({
+		layout: device.createPipelineLayout({ bindGroupLayouts: [flameBindGroupLayout] }),
+		compute: {
+			module: device.createShaderModule({
+				code: filterWGSL
+			}),
+			entryPoint: 'computeSobelX'
 		}
 	});
 
@@ -349,7 +382,7 @@ export function init(params: Params) {
 			{
 				binding: 1,
 				resource: {
-					buffer: flameBuffer
+					buffer: flameOutputBuffer
 				}
 			},
 			{
@@ -368,8 +401,8 @@ export function init(params: Params) {
     shouldClear = value;
   });
 
-	async function frame() {
-		let t1 = performance.now();
+	function frame() {
+		const t1 = performance.now();
 		FPS.set(Math.round(1000 / (t1 - t0)));
 		t0 = t1;
 
@@ -407,8 +440,14 @@ export function init(params: Params) {
 			passEncoder.setPipeline(flamePipeline);
 			passEncoder.setBindGroup(0, flameBindGroup);
 			passEncoder.dispatchWorkgroups(Math.ceil(resolution / 8), Math.ceil(resolution / 8));
+
+      // filter pixels
+      passEncoder.setPipeline(filterPipeline);
+			passEncoder.setBindGroup(0, flameBindGroup);
+			passEncoder.dispatchWorkgroups(Math.ceil(presentationWidth / 8), Math.ceil(presentationHeight / 8));
+
 			passEncoder.end();
-		}
+    }
 		// fullscreen pass
 		{
 			// allows rendering directly to canvas context

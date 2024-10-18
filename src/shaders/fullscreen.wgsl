@@ -59,7 +59,6 @@ fn clamp(x: f32, low: f32, high: f32) -> f32 {
     }
 }
 
-
 @fragment
 fn frag_main(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f32> {
     let gamma = 2.2;
@@ -68,15 +67,9 @@ fn frag_main(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f32> {
     let index = u32(X + Y * uniforms.screenWidth) * 4u;
 
     var max_hits = f32(maxHitsBuffer.value);
-    // fast max in log time? (divide and conquer)
-    // for (var i = 0u; i < u32(uniforms.screenWidth); i++) {
-    //     for (var j = 0u; j < u32(uniforms.screenHeight); j++) {
-    //       max_hits = max(max_hits, f32(finalHitsBuffer.data[ i + j * u32(uniforms.screenWidth) ]));
-    //     }
-    // }
 
     let hits = f32(flameBuffer.values[index + 3u]);
-    var alpha = log(hits) / log(max_hits);
+    var alpha = max(0.0, log(hits) / log(max_hits));
 
     let R = (f32(flameBuffer.values[index + 0u]) / 255.0) / hits;
     let G = (f32(flameBuffer.values[index + 1u]) / 255.0) / hits;

@@ -36,8 +36,10 @@
 		// canvas.height = window.innerHeight;
 		canvas.width = 800;
 		canvas.height = 800;
-		const presentationHeight = Math.floor(canvas.clientHeight * devicePixelRatio);
-		const presentationWidth = Math.floor(canvas.clientWidth * devicePixelRatio);
+		//const presentationHeight = Math.floor(canvas.clientHeight * devicePixelRatio);
+		//const presentationWidth = Math.floor(canvas.clientWidth * devicePixelRatio);
+		const presentationHeight = 800
+		const presentationWidth = 800
 		const resolution = 200;
 		// console.dir(adapter.limits)
 
