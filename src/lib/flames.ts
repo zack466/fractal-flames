@@ -3,6 +3,7 @@ import flamesWGSL from '$shaders/flames.wgsl?raw';
 import flameTemplateWGSL from '$shaders/flame_template.wgsl?raw';
 import fullscreenWGSL from '$shaders/fullscreen.wgsl?raw';
 import filterWGSL from '$shaders/filter.wgsl?raw';
+import averageWGSL from '$shaders/average.wgsl?raw';
 import { toShader, Linear, Sinusoid, color, Horseshoe, Spherical, Handkerchief } from '$lib/math';
 import { writable, get } from 'svelte/store';
 import {
@@ -178,11 +179,11 @@ export function init(params: Params) {
 		y: Math.ceil(resolution / 8)
 	});
 
-	const clearPass = new ComputePass(flameShader, 'clear', {
+	const clearPass = new ComputePass(averageWGSL, 'clear', {
 		x: Math.ceil((presentationHeight * presentationWidth) / 256)
 	});
 
-	const avgPass = new ComputePass(flameShader, 'avg', {
+	const avgPass = new ComputePass(averageWGSL, 'avg', {
 		x: Math.ceil((presentationHeight * presentationWidth) / 256)
 	});
 

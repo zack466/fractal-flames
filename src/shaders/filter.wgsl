@@ -2,6 +2,10 @@ struct FlameBuffer {
   values: array<u32>,
 };
 
+struct AvgFlameBuffer {
+  values: array<f32>,
+};
+
 struct MaxHits {
   value: atomic<u32>,
 }
@@ -17,21 +21,21 @@ struct Uniforms {
 };
 
 @group(0) @binding(0) var<storage, read_write> inputFlameBuffer : FlameBuffer;
-@group(0) @binding(1) var<storage, read_write> inputAvgFlameBuffer : FlameBuffer;
-@group(0) @binding(2) var<storage, read_write> outputFlameBuffer : FlameBuffer;
+@group(0) @binding(1) var<storage, read_write> inputAvgFlameBuffer : AvgFlameBuffer;
+@group(0) @binding(2) var<storage, read_write> outputFlameBuffer : AvgFlameBuffer;
 @group(0) @binding(3) var<uniform> uniforms : Uniforms;
 @group(0) @binding(4) var<storage, read_write> maxHits : MaxHits;
 
-fn input_color(x: u32, y: u32) -> vec4<u32> {
+fn input_color(x: u32, y: u32) -> vec4<f32> {
   let index = (x + y * u32(uniforms.screenWidth)) * 4u;
   let r = inputAvgFlameBuffer.values[index];
   let g = inputAvgFlameBuffer.values[index + 1u];
   let b = inputAvgFlameBuffer.values[index + 2u];
   let h = inputAvgFlameBuffer.values[index + 3u];
-  return vec4<u32>(r, g, b, h);
+  return vec4<f32>(r, g, b, h);
 }
 
-fn output_color(x: u32, y: u32, color: vec4<u32>) {
+fn output_color(x: u32, y: u32, color: vec4<f32>) {
   let index = (x + y * u32(uniforms.screenWidth)) * 4u;
   outputFlameBuffer.values[index] = color.r;
   outputFlameBuffer.values[index + 1u] = color.g;
@@ -55,9 +59,5 @@ fn apply_filter(@builtin(global_invocation_id) id: vec3<u32>) {
   // ) / 16u;
   let color = input_color(id.x, id.y);
   output_color(id.x, id.y, color);
-  atomicMax(&maxHits.value, color.a);
+  atomicMax(&maxHits.value, u32(color.a));
 }
-
-// @compute @workgroup_size(256)
-// fn apply_filter(@builtin(global_invocation_id) global_id : vec3<u32>) {
-// }

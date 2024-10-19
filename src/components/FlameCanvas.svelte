@@ -40,7 +40,7 @@
 		//const presentationWidth = Math.floor(canvas.clientWidth * devicePixelRatio);
 		const presentationHeight = 800
 		const presentationWidth = 800
-		const resolution = 200;
+		const resolution = 250;
 		// console.dir(adapter.limits)
 
 		const frame = init({
