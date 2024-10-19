@@ -186,7 +186,7 @@ export function init(params: Params) {
 		x: Math.ceil((presentationHeight * presentationWidth) / 256)
 	});
 
-	const filterPass = new ComputePass(filterWGSL, 'computeSobelX', {
+	const filterPass = new ComputePass(filterWGSL, 'apply_filter', {
 		x: Math.ceil(presentationWidth / 8),
 		y: Math.ceil(presentationHeight / 8)
 	});

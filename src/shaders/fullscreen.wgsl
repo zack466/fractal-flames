@@ -80,7 +80,7 @@ fn frag_main(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f32> {
         R * pow(alpha, 1.0 / gamma),
         G * pow(alpha, 1.0 / gamma),
         B * pow(alpha, 1.0 / gamma),
-        alpha,
+        1.0,
     );
 
     return finalColor;
