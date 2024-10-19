@@ -19,10 +19,11 @@ struct Uniforms {
 struct MaxHits {
   value: u32,
 }
-
-@group(0) @binding(0) var<uniform> uniforms : Uniforms;
-@group(0) @binding(1) var<storage, read> flameBuffer : FlameBuffer;
-@group(0) @binding(2) var<storage, read> maxHitsBuffer : MaxHits;
+@group(0) @binding(0) var<storage, read> inputFlameBuffer : FlameBuffer;
+@group(0) @binding(1) var<storage, read> inputAvgFlameBuffer : FlameBuffer;
+@group(0) @binding(2) var<storage, read> flameBuffer : FlameBuffer;
+@group(0) @binding(3) var<uniform> uniforms : Uniforms;
+@group(0) @binding(4) var<storage, read> maxHits : MaxHits;
 
 struct VertexOutput {
   @builtin(position) Position: vec4<f32>,
@@ -66,7 +67,7 @@ fn frag_main(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f32> {
     let Y = floor(coord.y);
     let index = u32(X + Y * uniforms.screenWidth) * 4u;
 
-    var max_hits = f32(maxHitsBuffer.value);
+    var max_hits = f32(maxHits.value);
 
     let hits = f32(flameBuffer.values[index + 3u]);
     var alpha = max(0.0, log(hits) / log(max_hits));

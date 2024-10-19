@@ -5,6 +5,14 @@ import fullscreenWGSL from '$shaders/fullscreen.wgsl?raw';
 import filterWGSL from '$shaders/filter.wgsl?raw';
 import { toShader, Linear, Sinusoid, color, Horseshoe, Spherical, Handkerchief } from '$lib/math';
 import { writable, get } from 'svelte/store';
+import {
+	ComputeBuffer,
+	ComputePass,
+	RenderPass,
+	UNIFORM_KEYS,
+	UniformBuffer,
+  Uniforms,
+} from '$lib/wgpu';
 
 const CHANNELS = 4;
 
@@ -22,32 +30,6 @@ export const DEFAULT_CAMERA = {
 	x_offset: 0,
 	y_offset: 0
 };
-
-class Uniforms {
-	constructor(
-		public presentationWidth: number = 0,
-		public presentationHeight: number = 0,
-		public rng: number = 0,
-		public log_scale: number = 0,
-		public x_offset: number = 0,
-		public y_offset: number = 0,
-		public resolution: number = 0
-	) {}
-
-	toBuffer() {
-		return new Float32Array([
-			this.presentationWidth,
-			this.presentationHeight,
-			this.rng,
-			this.log_scale,
-			this.x_offset,
-			this.y_offset,
-			this.resolution
-		]);
-	}
-}
-
-const uniform_keys = Object.keys(new Uniforms());
 
 // Data:
 // flameBuffer - u32, Height x Width x 4  // RGBA
@@ -76,10 +58,11 @@ const uniform_keys = Object.keys(new Uniforms());
 // - maybe instead of picking a few random points, pick many starting points but run less iterations
 //   - e.g. sample 1000x1000 equally spaced points from unit grid, run 100 iterations each
 // - make RNG more advanced (maybe not necessary? seems good enough)
-// 
+//
 // TODO:
 //  - density-aware filtering
 //  - remove random branches using precomputed permutations
+//  - try using textures instead of buffers??
 //
 export async function initGPU() {
 	const gpu = navigator.gpu;
@@ -164,243 +147,63 @@ export function init(params: Params) {
 	// console.log(flameShader);
 
 	// initialize buffers
+	const flameBuffer = new ComputeBuffer([CHANNELS, presentationHeight, presentationWidth], device);
+	const flameAvgBuffer = new ComputeBuffer(
+		[CHANNELS, presentationHeight, presentationWidth],
+		device
+	);
+	const flameOutputBuffer = new ComputeBuffer(
+		[CHANNELS, presentationHeight, presentationWidth],
+		device
+	);
+	const maxHitsBuffer = new ComputeBuffer([1], device);
+	const uniformBuffer = new UniformBuffer(UNIFORM_KEYS.length, device);
 
-	const flameBufferSize =
-		Uint32Array.BYTES_PER_ELEMENT * (presentationWidth * presentationHeight) * CHANNELS;
-	const flameBuffer = device.createBuffer({
-		size: flameBufferSize,
-		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-	});
-	const flameAvgBuffer = device.createBuffer({
-		size: flameBufferSize,
-		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-	});
-	const flameOutputBuffer = device.createBuffer({
-		size: flameBufferSize,
-		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-	});
-
-	const maxHitsBuffer = device.createBuffer({
-		size: Uint32Array.BYTES_PER_ELEMENT * 1,
-		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-	});
-
-	const uniformBufferSize = uniform_keys.length * 4;
-	const uniformBuffer = device.createBuffer({
-		size: uniformBufferSize,
-		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-	});
+  const resources = [
+    flameBuffer,
+    flameAvgBuffer,
+    flameOutputBuffer,
+    uniformBuffer,
+    maxHitsBuffer,
+  ]
 
 	// for reading data from the gpu
-	const stagingBuffer = device.createBuffer({
-		size: flameBufferSize,
-		usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+	//const stagingBuffer = device.createBuffer({
+	//	size: flameBufferSize,
+	//	usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+	//});
+	//
+	const flamePass = new ComputePass(flameShader, 'main', {
+		x: Math.ceil(resolution / 8),
+		y: Math.ceil(resolution / 8)
 	});
 
-	// set up bind groups for each pipeline
-	const flameBindGroupLayout = device.createBindGroupLayout({
-		entries: [
-			// flame buffer
-			{
-				binding: 0,
-				visibility: GPUShaderStage.COMPUTE,
-				buffer: {
-					type: 'storage'
-				}
-			},
-			{
-				// flame avg buffer
-				binding: 1,
-				visibility: GPUShaderStage.COMPUTE,
-				buffer: {
-					type: 'storage'
-				}
-			},
-			{
-				// flame output buffer
-				binding: 2,
-				visibility: GPUShaderStage.COMPUTE,
-				buffer: {
-					type: 'storage'
-				}
-			},
-			// params (uniform)
-			{
-				binding: 3,
-				visibility: GPUShaderStage.COMPUTE,
-				buffer: {
-					type: 'uniform'
-				}
-			},
-			{ // max hits
-				binding: 4,
-				visibility: GPUShaderStage.COMPUTE,
-				buffer: {
-					type: 'storage'
-				}
-			}
-		]
+	const clearPass = new ComputePass(flameShader, 'clear', {
+		x: Math.ceil((presentationHeight * presentationWidth) / 256)
 	});
 
-	const flameBindGroup = device.createBindGroup({
-		layout: flameBindGroupLayout,
-		entries: [
-			{
-				binding: 0,
-				resource: {
-					buffer: flameBuffer
-				}
-			},
-			{
-				binding: 1,
-				resource: {
-					buffer: flameAvgBuffer
-				}
-			},
-			{
-				binding: 2,
-				resource: {
-					buffer: flameOutputBuffer
-				}
-			},
-			{
-				binding: 3,
-				resource: {
-					buffer: uniformBuffer
-				}
-			},
-			{
-				binding: 4,
-				resource: {
-					buffer: maxHitsBuffer
-				}
-			}
-		]
+	const avgPass = new ComputePass(flameShader, 'avg', {
+		x: Math.ceil((presentationHeight * presentationWidth) / 256)
 	});
 
-	const flamePipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({ bindGroupLayouts: [flameBindGroupLayout] }),
-		compute: {
-			module: device.createShaderModule({
-				code: flameShader
-			}),
-			entryPoint: 'main'
-		}
+	const filterPass = new ComputePass(filterWGSL, 'computeSobelX', {
+		x: Math.ceil(presentationWidth / 8),
+		y: Math.ceil(presentationHeight / 8)
 	});
 
-	const clearPipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({ bindGroupLayouts: [flameBindGroupLayout] }),
-		compute: {
-			module: device.createShaderModule({
-				code: flameShader
-			}),
-			entryPoint: 'clear'
-		}
-	});
+	const fullscreenPass = new RenderPass(
+		fullscreenWGSL,
+		'vert_main',
+		'frag_main',
+		presentationFormat
+	);
 
-	const avgPipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({ bindGroupLayouts: [flameBindGroupLayout] }),
-		compute: {
-			module: device.createShaderModule({
-				code: flameShader
-			}),
-			entryPoint: 'avg'
-		}
-	});
-
-	const filterPipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({ bindGroupLayouts: [flameBindGroupLayout] }),
-		compute: {
-			module: device.createShaderModule({
-				code: filterWGSL
-			}),
-			entryPoint: 'computeSobelX'
-		}
-	});
-
-	const fullscreenBindGroupLayout = device.createBindGroupLayout({
-		entries: [
-			{
-				binding: 0,
-				visibility: GPUShaderStage.FRAGMENT,
-				buffer: {
-					type: 'uniform'
-				}
-			},
-			{
-				binding: 1, // flame buffer
-				visibility: GPUShaderStage.FRAGMENT,
-				buffer: {
-					type: 'read-only-storage'
-				}
-			},
-			{
-				binding: 2, // max hits
-				visibility: GPUShaderStage.FRAGMENT,
-				buffer: {
-					type: 'read-only-storage'
-				}
-			}
-		]
-	});
-
-	const fullscreenPipeline = device.createRenderPipeline({
-		layout: device.createPipelineLayout({
-			bindGroupLayouts: [fullscreenBindGroupLayout]
-		}),
-		vertex: {
-			module: device.createShaderModule({
-				code: fullscreenWGSL
-			}),
-			entryPoint: 'vert_main'
-		},
-		fragment: {
-			module: device.createShaderModule({
-				code: fullscreenWGSL
-			}),
-			entryPoint: 'frag_main',
-			targets: [
-				{
-					format: presentationFormat
-				}
-			]
-		},
-		primitive: {
-			topology: 'triangle-list'
-		}
-	});
-
-	const fullscreenBindGroup = device.createBindGroup({
-		layout: fullscreenBindGroupLayout,
-		entries: [
-			{
-				binding: 0,
-				resource: {
-					buffer: uniformBuffer
-				}
-			},
-			{
-				binding: 1,
-				resource: {
-					buffer: flameOutputBuffer
-				}
-			},
-			{
-				binding: 2,
-				resource: {
-					buffer: maxHitsBuffer
-				}
-			}
-		]
+	let shouldClear = false;
+	CLEAR.subscribe((value) => {
+		shouldClear = value;
 	});
 
 	let t0 = performance.now();
-
-  let shouldClear = false;
-  CLEAR.subscribe((value) => {
-    shouldClear = value;
-  });
-
 	function frame() {
 		const t1 = performance.now();
 		FPS.set(Math.round(1000 / (t1 - t0)));
@@ -408,70 +211,36 @@ export function init(params: Params) {
 
 		const commandEncoder = device.createCommandEncoder();
 
-		// flames pass
-		{
-			device.queue.writeBuffer(
-				uniformBuffer,
-				0,
-				new Uniforms(
-					presentationWidth,
-					presentationHeight,
-					Math.random() * 1e9,
-					camera.log_scale,
-					camera.x_offset,
-					camera.y_offset,
-					resolution
-				).toBuffer()
-			);
-			const passEncoder = commandEncoder.beginComputePass();
+    // update uniforms
+    uniformBuffer.write(
+      new Uniforms(
+        presentationWidth,
+        presentationHeight,
+        Math.random() * 1e9,
+        camera.log_scale,
+        camera.x_offset,
+        camera.y_offset,
+        resolution
+      ),
+      device,
+    )
 
-			// clear or average previous pixels
-			if (shouldClear) {
-        CLEAR.set(false);
-				passEncoder.setPipeline(clearPipeline);
-			} else {
-				passEncoder.setPipeline(avgPipeline);
-			}
-			passEncoder.setBindGroup(0, flameBindGroup);
-			const timesToRun = Math.ceil((presentationWidth * presentationHeight) / 256);
-			passEncoder.dispatchWorkgroups(timesToRun);
-
-			// compute new pixels
-			passEncoder.setPipeline(flamePipeline);
-			passEncoder.setBindGroup(0, flameBindGroup);
-			passEncoder.dispatchWorkgroups(Math.ceil(resolution / 8), Math.ceil(resolution / 8));
-
-      // filter pixels
-      passEncoder.setPipeline(filterPipeline);
-			passEncoder.setBindGroup(0, flameBindGroup);
-			passEncoder.dispatchWorkgroups(Math.ceil(presentationWidth / 8), Math.ceil(presentationHeight / 8));
-
-			passEncoder.end();
+    if (shouldClear) {
+      CLEAR.set(false);
+      clearPass.encodePass(device, commandEncoder, resources)
+    } else {
+      avgPass.encodePass(device, commandEncoder, resources)
     }
-		// fullscreen pass
-		{
-			// allows rendering directly to canvas context
-			const textureView = context.getCurrentTexture().createView();
-			const renderPassDescriptor: GPURenderPassDescriptor = {
-				colorAttachments: [
-					{
-						view: textureView,
-						clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-						loadOp: 'clear',
-						storeOp: 'store'
-					}
-				]
-			};
-			const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
-			passEncoder.setPipeline(fullscreenPipeline);
-			passEncoder.setBindGroup(0, fullscreenBindGroup);
-			passEncoder.draw(6, 1, 0, 0);
-			passEncoder.end();
-		}
+
+    flamePass.encodePass(device, commandEncoder, resources)
+    filterPass.encodePass(device, commandEncoder, resources)
+
+    //// allows rendering directly to canvas context
+    const textureView = context.getCurrentTexture().createView();
+    fullscreenPass.encodePass(device, commandEncoder, textureView, resources);
+
 		// map gpu memory to javascript (for debugging)
-		{
-			// commandEncoder.copyBufferToBuffer(hitsBuffer, 0, stagingBuffer, 0, hitsBufferSize);
-		}
+		// commandEncoder.copyBufferToBuffer(hitsBuffer, 0, stagingBuffer, 0, hitsBufferSize);
 
 		device.queue.submit([commandEncoder.finish()]);
 
